@@ -1,21 +1,52 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 
-import requests as requests
+import aiohttp
 from bs4 import BeautifulSoup
+from prettytable import PrettyTable
 
 from Models import Rate
 
 
-class BaseRateExtractor(ABC):
+class BaseRateExtractor():
     name: str
     source_url: str
     rates: list[Rate]
     _allowed_currencies: tuple = ('USD', 'UAH', 'EUR')
 
+    def __init__(self):
+        self.rates = []
+
+    async def extract(self):
+        await self._parseWebPage()
 
     @abstractmethod
-    def extract(self):
+    async def _parseWebPage(self):
         pass
+
+    async def _fetch(self, headers=None):
+        headers = {} if headers is None else headers
+        session = aiohttp.ClientSession()
+        response = await session.get(self.source_url, headers = headers)
+        content = await response.text()
+        await session.close()
+        return content
+
+    def get_table_view(self):
+        result_string = f'{self.name}\n{self.source_url}\n'
+        result_string += '<pre>'
+        tb = PrettyTable(padding_width = 0)
+        # Add headers
+        tb.field_names = [" ", "Покупка", "Продажа"]
+
+        for rate in self.rates:
+            # Add rows
+            tb.add_row([f'{rate.main_currency}/{rate.secondary_currency}',
+                        str(rate.purchase), str(rate.sale)])
+
+        result_string += tb.get_string()
+        result_string += '</pre>\n'
+        print(result_string)
+        return result_string
 
 
 class ObmenkaRateExtractor(BaseRateExtractor):
@@ -23,16 +54,10 @@ class ObmenkaRateExtractor(BaseRateExtractor):
     source_url = "https://obmenka.sumy.ua/"
     rates = None
 
-    def __init__(self):
-        self.rates = []
+    async def _parseWebPage(self):
+        page = await self._fetch()
 
-    def extract(self):
-        self.__parseWebPage()
-
-    def __parseWebPage(self):
-        page = requests.get(self.source_url)
-
-        soup = BeautifulSoup(page.content, "html.parser")
+        soup = BeautifulSoup(page, "html.parser")
         table_container = soup.find(id = "mobile")
         table_rows = table_container.find_all("tr")
         # remove placeholder row.
@@ -59,20 +84,13 @@ class KursRateExtractor(BaseRateExtractor):
     source_url = "https://kurs.sumy.ua/"
     rates = None
 
-    def __init__(self):
-        self.rates = []
-
-    def extract(self):
-        self.__parseWebPage()
-
-    def __parseWebPage(self):
+    async def _parseWebPage(self):
         headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 '
                           '(KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'
         }
-
-        page = requests.get(self.source_url, headers = headers)
-        soup = BeautifulSoup(page.content, "html.parser")
+        page = await self._fetch(headers)
+        soup = BeautifulSoup(page, "html.parser")
         panel_container = soup.find(id = "panel1")
         table_container = panel_container.find('div', class_ = "col-sm-12 board-table")
         rate_rows = table_container.find_all('div', class_ = "row")
@@ -107,15 +125,9 @@ class Money24RateExtractor(BaseRateExtractor):
     source_url = "https://money-24.sumy.ua/ru/"
     rates = None
 
-    def __init__(self):
-        self.rates = []
-
-    def extract(self):
-        self.__parseWebPage()
-
-    def __parseWebPage(self):
-        page = requests.get(self.source_url)
-        soup = BeautifulSoup(page.content, "html.parser")
+    async def _parseWebPage(self):
+        page = await self._fetch()
+        soup = BeautifulSoup(page, "html.parser")
         table_container = soup.find(id = "table-roznica")
         table_rows = table_container.find_all('tr')
         # remove placeholder row.
