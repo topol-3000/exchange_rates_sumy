@@ -45,7 +45,6 @@ class BaseRateExtractor():
 
         result_string += tb.get_string()
         result_string += '</pre>\n'
-        print(result_string)
         return result_string
 
 

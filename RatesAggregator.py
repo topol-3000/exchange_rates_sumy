@@ -1,3 +1,5 @@
+import asyncio
+
 from RateExtractor import KursRateExtractor, Money24RateExtractor, ObmenkaRateExtractor
 
 
@@ -15,7 +17,8 @@ class RatesAggregator:
         return self.__create_view()
 
     async def __extract_rates(self):
-        [await extractor.extract() for extractor in self.__rate_extractors]
+        tasks = [asyncio.create_task(extractor.extract()) for extractor in self.__rate_extractors]
+        await asyncio.gather(*tasks)
 
     def __create_view(self):
         result_string = [extractor.get_table_view() for extractor in self.__rate_extractors]
