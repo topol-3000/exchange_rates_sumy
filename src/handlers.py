@@ -1,6 +1,6 @@
 from aiogram import types
 
-from const import START_MESSAGE
+from const import START_MESSAGE, RATES_WAITING_MESSAGE
 from RatesAggregator import RatesAggregator
 
 
@@ -15,6 +15,7 @@ async def get_rates(message: types.Message):
     """
     This handler will be called when user sends `/get_rates` command
     """
+    await message.answer(RATES_WAITING_MESSAGE)
     aggregator = RatesAggregator()
     rates_string = await aggregator.aggregate()
     await message.answer(rates_string, disable_web_page_preview = True, parse_mode = 'HTML')
