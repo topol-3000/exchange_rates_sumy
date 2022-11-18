@@ -1,6 +1,6 @@
 from abc import abstractmethod
 
-import aiohttp
+from aiohttp import ClientSession
 from bs4 import BeautifulSoup
 from prettytable import PrettyTable
 
@@ -12,39 +12,43 @@ class BaseRateExtractor():
     source_url: str
     rates: list[Rate]
     _allowed_currencies: tuple = ('USD', 'UAH', 'EUR')
+    _web_page: str = None
 
     def __init__(self):
         self.rates = []
 
-    async def extract(self):
-        await self._parseWebPage()
+    async def extract(self, session: ClientSession):
+        user_agent = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 '
+                          '(KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'
+        }
+        async with session.get(self.source_url, headers=user_agent) as response:
+            self._web_page = await response.text()
+
+        self._parseWebPage()
 
     @abstractmethod
-    async def _parseWebPage(self):
+    def _parseWebPage(self):
         pass
-
-    async def _fetch(self, headers=None):
-        headers = {} if headers is None else headers
-        session = aiohttp.ClientSession()
-        response = await session.get(self.source_url, headers = headers)
-        content = await response.text()
-        await session.close()
-        return content
 
     def get_table_view(self):
         result_string = f'{self.name}\n{self.source_url}\n'
-        result_string += '<pre>'
-        tb = PrettyTable(padding_width = 0)
-        # Add headers
-        tb.field_names = [" ", "Покупка", "Продажа"]
+        if self.rates:
+            result_string += '<pre>'
+            tb = PrettyTable(padding_width = 0)
+            # Add headers
+            tb.field_names = [" ", "Покупка", "Продажа"]
 
-        for rate in self.rates:
-            # Add rows
-            tb.add_row([f'{rate.main_currency}/{rate.secondary_currency}',
-                        str(rate.purchase), str(rate.sale)])
+            for rate in self.rates:
+                # Add rows
+                tb.add_row([f'{rate.main_currency}/{rate.secondary_currency}',
+                            str(rate.purchase), str(rate.sale)])
 
-        result_string += tb.get_string()
-        result_string += '</pre>\n'
+            result_string += tb.get_string()
+            result_string += '</pre>\n'
+        else:
+            result_string += 'Данные временно недоступны\n'
+
         return result_string
 
 
@@ -53,10 +57,11 @@ class ObmenkaRateExtractor(BaseRateExtractor):
     source_url = "https://obmenka.sumy.ua/"
     rates = None
 
-    async def _parseWebPage(self):
-        page = await self._fetch()
+    def _parseWebPage(self):
+        if self._web_page is None:
+            return
 
-        soup = BeautifulSoup(page, "html.parser")
+        soup = BeautifulSoup(self._web_page, "html.parser")
         table_container = soup.find(id = "mobile")
         table_rows = table_container.find_all("tr")
         # remove placeholder row.
@@ -83,13 +88,11 @@ class KursRateExtractor(BaseRateExtractor):
     source_url = "https://kurs.sumy.ua/"
     rates = None
 
-    async def _parseWebPage(self):
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 '
-                          '(KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'
-        }
-        page = await self._fetch(headers)
-        soup = BeautifulSoup(page, "html.parser")
+    def _parseWebPage(self):
+        if self._web_page is None:
+            return
+
+        soup = BeautifulSoup(self._web_page, "html.parser")
         panel_container = soup.find(id = "panel1")
         table_container = panel_container.find('div', class_ = "col-sm-12 board-table")
         rate_rows = table_container.find_all('div', class_ = "row")
@@ -124,9 +127,11 @@ class Money24RateExtractor(BaseRateExtractor):
     source_url = "https://money-24.sumy.ua/ru/"
     rates = None
 
-    async def _parseWebPage(self):
-        page = await self._fetch()
-        soup = BeautifulSoup(page, "html.parser")
+    def _parseWebPage(self):
+        if self._web_page is None:
+            return
+
+        soup = BeautifulSoup(self._web_page, "html.parser")
         table_container = soup.find(id = "table-roznica")
         table_rows = table_container.find_all('tr')
         # remove placeholder row.
